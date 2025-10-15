@@ -18,15 +18,6 @@ JAVA_HOME=<path to the Babylon JDK home>
 mvn process-test-classes exec:java -Dexec.mainClass=oracle.code.onnx.fer.FERCoreMLDemo
 ```
 
-Babylon JDK is based on current OpenJDK mainline.
-This means that the FFM compatible parts of the `onnx` project can be ran with JDK 25 or OpenJDK 26 Early Access Builds.
-You can try that by pointing your $JAVA_HOME to JDK 25 then run `run-jdk.sh` script:
-
-```shell
-JAVA_HOME=<path to JDK 25>
-./run-jdk.sh
-```
-
 #### How to (Re)Generate the CoreML Java Bindings
 
 Build and install custom ONNX Runtime with CoreML enabled (for Mac users):

@@ -30,7 +30,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.SequencedMap;
 import java.util.function.Function;
 import java.util.stream.IntStream;
@@ -418,6 +417,16 @@ public final class OnnxProtoBuilder {
             case long[] longs -> {
                 attr.type(AttributeType.INTS);
                 attr.ints(longs);
+            }
+            case String s -> {
+                attr.type(AttributeType.STRING);
+                attr.s(s.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            case String[] strings -> {
+                attr.type(AttributeType.STRINGS);
+                for (String s : strings) {
+                    attr.strings(s.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                }
             }
             case Tensor<?> t -> {
                 attr.type(AttributeType.TENSOR);
