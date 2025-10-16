@@ -422,12 +422,6 @@ public final class OnnxProtoBuilder {
                 attr.type(AttributeType.STRING);
                 attr.s(s.getBytes());
             }
-            case String[] strings -> {
-                attr.type(AttributeType.STRINGS);
-                for (String s : strings) {
-                    attr.strings(s.getBytes());
-                }
-            }
             case Tensor<?> t -> {
                 attr.type(AttributeType.TENSOR);
                 attr.t(tensorProto(t));
