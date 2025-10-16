@@ -34,17 +34,20 @@ public class FERCoreMLDemo {
 	private static final int MAX_THUMBNAILS = 12;
 	private static final String BASE_PATH = "/oracle/code/onnx/fer/";
 	private final List<URL> selectedUrls = new ArrayList<>();
+	private final boolean useCondensedModel;
 	private JFrame frame;
 	private JLabel[] imageLabels;
 	private JLabel[] resultLabels;
 	private FERInference inference;
 
-	private FERCoreMLDemo() throws IOException {
+	private FERCoreMLDemo(boolean useCondensedModel) throws IOException {
 		this.inference = new FERInference();
+		this.useCondensedModel = useCondensedModel;
 	}
 
 	public static void main(String[] args) throws IOException, URISyntaxException {
-		new FERCoreMLDemo().buildGUI();
+		boolean useArgModel = (args.length > 0 ) ? Boolean.parseBoolean(args[0]) : false;
+		new FERCoreMLDemo(useArgModel).buildGUI();
 	}
 
 	private void buildGUI() throws IOException, URISyntaxException {
@@ -164,12 +167,13 @@ public class FERCoreMLDemo {
 		progressBar.setVisible(true);
 		analyzeBtn.setEnabled(false);
 
+		long startTime = System.nanoTime();
 
 		for (int i = 0; i < selectedUrls.size(); i++) {
 			URL url = selectedUrls.get(i);
 
 			try (var arena = Arena.ofConfined()) {
-				float[] probs = inference.analyzeImage(arena, new CoreMLProvider(), url);
+				float[] probs = inference.analyzeImage(arena, new CoreMLProvider(), url, useCondensedModel);
 				String top3 = formatTopK(probs, 3, EMOTIONS);
 
 				resultLabels[i].setText("<html>" + top3 + "</html>");
@@ -182,7 +186,8 @@ public class FERCoreMLDemo {
 				resultLabels[i].setText("<html><span style='color:red'>Error!</span></html>");
 			}
 		}
-
+		long endTime = System.nanoTime();
+		logger.info("Total time spent in evaluation %s ms".formatted((endTime - startTime)/1000000));
 		analyzeBtn.setEnabled(true);
 		analyzeBtn.setText("Restart");
 		progressBar.setString("Analysis complete!");

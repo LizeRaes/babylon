@@ -190,16 +190,13 @@ public class FERModel {
 		Tensor<Float> dense3 = MatMul(dropout680.output(), parameter1693);
 		Tensor<Float> plus692 = Add(dense3, parameter1694);
 
-		return plus692;
+		return Softmax(plus692, of(1L));
 	}
 
 	// Helper method: Convolution block (Conv -> Add -> Relu)
 	@CodeReflection
-	public Tensor<Float> convAddRelu(
-			Tensor<Float> input,
-			Tensor<Float> weight,
-			Tensor<Float> bias
-	) {
+	private Tensor<Float> convAddRelu(Tensor<Float> input,
+			Tensor<Float> weight, Tensor<Float> bias) {
 		// Applies convolution, bias addition, and ReLU activation
 		Tensor<Float> conv = Conv(input, weight, empty(), empty(),
 				of(new long[]{1l, 1l}), of("SAME_UPPER"),
@@ -208,23 +205,23 @@ public class FERModel {
 		return Relu(added);
 	}
 
-	// Helper method: MaxPool followed by Dropout
+	// Helper method: MaxPool followed by Dropout (MaxPool -> Dropout)
 	@CodeReflection
-	public Tensor<Float> maxPoolDropout(Tensor<Float> input) {
+	private Tensor<Float> maxPoolDropout(Tensor<Float> input) {
 		// Applies max pooling, then dropout to the input
 		var pooling = MaxPool(input, of(new long[]{0l, 0l, 0l, 0l}), empty(),
 				of("NOTSET"), empty(), empty(), of(new long[]{2l, 2l}),
 				new long[]{2l, 2l});
 		var dropout = Dropout(pooling.Y(), empty(), empty(), empty());
-		return dropout.output();
+		return Identity(dropout.output());
 	}
 
 	public float[] classify(Arena inferenceArena, float[] imageData, OnnxRuntime.SessionOptions options, boolean isCondensed) {
 		var imageTensor = Tensor.ofShape(inferenceArena, new long[]{1, 1, IMAGE_SIZE, IMAGE_SIZE}, imageData);
 		Tensor<Float> predictionTensor;
 		if (isCondensed) {
-			predictionTensor = OnnxRuntime.execute(inferenceArena, MethodHandles.lookup(),
-					() -> condenseCNTKGraph(imageTensor));
+			predictionTensor = OnnxRuntime.executeWithOptions(inferenceArena, MethodHandles.lookup(),
+					() -> condenseCNTKGraph(imageTensor), options);
 		} else {
 			predictionTensor = OnnxRuntime.executeWithOptions(inferenceArena, MethodHandles.lookup(),
 					() -> cntkGraph(imageTensor), options);

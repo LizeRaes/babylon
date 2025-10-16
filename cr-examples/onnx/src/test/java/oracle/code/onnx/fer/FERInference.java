@@ -4,6 +4,7 @@ import oracle.code.onnx.provider.OnnxProvider;
 import oracle.code.onnx.OnnxRuntime;
 
 import javax.imageio.ImageIO;
+import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -22,13 +23,13 @@ public class FERInference {
 		runtime = OnnxRuntime.getInstance();
 	}
 
-    public float[] analyzeImage(Arena arena, OnnxProvider provider, URL url) throws Exception {
+    public float[] analyzeImage(Arena arena, OnnxProvider provider, URL url, boolean useCondensedModel) throws Exception {
         float[] imageData = transformToFloatArray(url);
-		FERModel ferModel = new FERModel(arena);
 		var sessionOptions = runtime.createSessionOptions(arena);
 		if (Objects.nonNull(provider))
 			provider.configure(sessionOptions);
-		float[] rawScores = ferModel.classify(arena, imageData, sessionOptions, true);
+		FERModel ferModel = new FERModel(arena);
+		float[] rawScores =  ferModel.classify(arena, imageData, sessionOptions, useCondensedModel);
 		return rawScores;
     }
 
@@ -54,5 +55,4 @@ public class FERInference {
 
         return data;
     }
-
 }

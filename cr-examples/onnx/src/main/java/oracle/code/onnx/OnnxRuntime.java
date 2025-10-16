@@ -117,6 +117,7 @@ public final class OnnxRuntime {
 
         private MethodHandles.Lookup l;
         private Quoted q;
+		private SessionOptions options;
 
         SessionWithReturnType computeIfAbsent(Class<?> lambdaClass, MethodHandles.Lookup l,  Quoted q) {
             try {
@@ -147,57 +148,38 @@ public final class OnnxRuntime {
                 } catch (IOException _) {}
             }
 
-            return new SessionWithReturnType(
-                    getInstance().createSession(
-                            Arena.ofAuto(), // cached session must be created under its own auto arena
-                            protobufModel),
+			// cached session must be created under its own auto arena
+			Session session = (options != null) ?
+					getInstance().createSession(Arena.ofAuto(), protobufModel, options) :
+					getInstance().createSession(Arena.ofAuto(), protobufModel);
+
+			return new SessionWithReturnType(
+					session,
                     mi.module().functionTable().lastEntry().getValue().invokableType().returnType());
 
         }
 
         // Static helper for cache with options
-        protected static SessionWithReturnType computeWithOptionsIfAbsent(
+        protected SessionWithReturnType computeWithOptionsIfAbsent(
 				Class<?> lambdaClass, MethodHandles.Lookup l, Quoted q, SessionOptions options) {
-            OnnxTransformer.ModuleAndInitializers mi = OnnxTransformer.transform(l, q);
-            String domainName = lambdaClass.getSimpleName().split("\\$")[0];
-            byte[] protobufModel = OnnxProtoBuilder.buildModel(
-                    domainName, mi.module(),
-                    getInitValues(l, mi.initializers(), q.capturedValues().sequencedValues())
-            );
-            Session session = getInstance().createSession(Arena.ofAuto(), protobufModel, options);
-            return new SessionWithReturnType(session, mi.module().functionTable().lastEntry().getValue().invokableType().returnType());
+		  try {
+			this.l = l;
+			this.q = q;
+			this.options = options;
+			// not very nice way to pass additional arguments to computeValue method
+			return get(lambdaClass);
+		} finally {
+			this.l = null;
+			this.q = null;
+			this.options = null;
+		}
         }
     }
 
     private static final CachedSessionClassValue SESSION_CACHE = new CachedSessionClassValue();
 
 
-    private static final class CacheOptions {
-        private final Class<?> lambdaClass;
-        private final SessionOptions sessionOptions;
-
-        CacheOptions(Class<?> lambdaClass, SessionOptions options) {
-            this.lambdaClass = lambdaClass;
-            this.sessionOptions = options;
-        }
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-            CacheOptions cacheOptions = (CacheOptions) o;
-            return Objects.equals(lambdaClass, cacheOptions.lambdaClass)
-                    && Objects.equals(sessionOptions, cacheOptions.sessionOptions);
-        }
-        @Override
-        public int hashCode() {
-            return Objects.hash(lambdaClass, sessionOptions);
-        }
-    }
-
-    private static final Map<CacheOptions, SessionWithReturnType> SESSION_CACHE_WITH_OPTIONS = new java.util.concurrent.ConcurrentHashMap<>();
-
-
-    public static <T> T execute(OnnxFunction<T> codeLambda) {
+	public static <T> T execute(OnnxFunction<T> codeLambda) {
         return execute(MethodHandles.lookup(), codeLambda);
     }
 
@@ -261,11 +243,8 @@ public final class OnnxRuntime {
 
     public static <T> T executeWithOptions(Arena arena, MethodHandles.Lookup l, OnnxFunction<T> codeLambda, SessionOptions options) {
         var q = Op.ofQuotable(codeLambda).orElseThrow();
-        CacheOptions key = new CacheOptions(codeLambda.getClass(), options);
 
-        SessionWithReturnType cached = SESSION_CACHE_WITH_OPTIONS.computeIfAbsent(
-            key, _ -> CachedSessionClassValue.computeWithOptionsIfAbsent(codeLambda.getClass(), l, q, options)
-        );
+        SessionWithReturnType cached = SESSION_CACHE.computeWithOptionsIfAbsent(codeLambda.getClass(), l, q, options);
 
         List<Tensor> arguments = q.capturedValues().sequencedValues().stream()
                 .mapMulti(OnnxRuntime::expandArg)
@@ -334,7 +313,7 @@ public final class OnnxRuntime {
         //  const OrtApi* ortPtr = OrtGetApiBase()->GetApi((uint32_t)apiVersion);
         var apiBase = OrtApiBase.reinterpret(OrtGetApiBase(), arena, null);
         runtimeAddress = OrtApi.reinterpret(OrtApiBase.GetApi(apiBase, ORT_API_VERSION()), arena, null);
-        envAddress = retAddr(OrtApi.CreateEnv(runtimeAddress, ORT_LOGGING_LEVEL_ERROR(), arena.allocateFrom(LOG_ID), ret));
+        envAddress = retAddr(OrtApi.CreateEnv(runtimeAddress, ORT_LOGGING_LEVEL_VERBOSE(), arena.allocateFrom(LOG_ID), ret));
         defaultAllocatorAddress = retAddr(OrtApi.GetAllocatorWithDefaultOptions(runtimeAddress, ret)).reinterpret(arena, null);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> OrtApi.ReleaseEnv(runtimeAddress, envAddress)));
     }
