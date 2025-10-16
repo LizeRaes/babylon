@@ -420,12 +420,12 @@ public final class OnnxProtoBuilder {
             }
             case String s -> {
                 attr.type(AttributeType.STRING);
-                attr.s(s.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                attr.s(s.getBytes());
             }
             case String[] strings -> {
                 attr.type(AttributeType.STRINGS);
                 for (String s : strings) {
-                    attr.strings(s.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    attr.strings(s.getBytes());
                 }
             }
             case Tensor<?> t -> {
