@@ -28,7 +28,7 @@ public class FERInference {
 		var sessionOptions = runtime.createSessionOptions(arena);
 		if (Objects.nonNull(provider))
 			provider.configure(sessionOptions);
-		float[] rawScores = ferModel.classify(arena, imageData, sessionOptions);
+		float[] rawScores = ferModel.classify(arena, imageData, sessionOptions, true);
 		return rawScores;
     }
 
