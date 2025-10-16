@@ -81,7 +81,7 @@ public final class OnnxRuntime {
         try (var libStream = OnnxRuntime.class.getResourceAsStream(libResource)) {
             var libFile = File.createTempFile("libonnxruntime", "");
             Path libFilePath = libFile.toPath();
-            Files.copy(libStream, libFilePath, StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(Objects.requireNonNull(libStream), libFilePath, StandardCopyOption.REPLACE_EXISTING);
             System.load(libFilePath.toAbsolutePath().toString());
             libFile.deleteOnExit();
         } catch (IOException e) {
@@ -117,6 +117,7 @@ public final class OnnxRuntime {
 
         private MethodHandles.Lookup l;
         private Quoted q;
+		private SessionOptions options;
 
         SessionWithReturnType computeIfAbsent(Class<?> lambdaClass, MethodHandles.Lookup l,  Quoted q) {
             try {
@@ -147,18 +148,38 @@ public final class OnnxRuntime {
                 } catch (IOException _) {}
             }
 
-            return new SessionWithReturnType(
-                    getInstance().createSession(
-                            Arena.ofAuto(), // cached session must be created under its own auto arena
-                            protobufModel),
+			// cached session must be created under its own auto arena
+			Session session = (options != null) ?
+					getInstance().createSession(Arena.ofAuto(), protobufModel, options) :
+					getInstance().createSession(Arena.ofAuto(), protobufModel);
+
+			return new SessionWithReturnType(
+					session,
                     mi.module().functionTable().lastEntry().getValue().invokableType().returnType());
 
+        }
+
+        // Static helper for cache with options
+        protected SessionWithReturnType computeWithOptionsIfAbsent(
+				Class<?> lambdaClass, MethodHandles.Lookup l, Quoted q, SessionOptions options) {
+		  try {
+			this.l = l;
+			this.q = q;
+			this.options = options;
+			// not very nice way to pass additional arguments to computeValue method
+			return get(lambdaClass);
+		} finally {
+			this.l = null;
+			this.q = null;
+			this.options = null;
+		}
         }
     }
 
     private static final CachedSessionClassValue SESSION_CACHE = new CachedSessionClassValue();
 
-    public static <T> T execute(OnnxFunction<T> codeLambda) {
+
+	public static <T> T execute(OnnxFunction<T> codeLambda) {
         return execute(MethodHandles.lookup(), codeLambda);
     }
 
@@ -220,6 +241,37 @@ public final class OnnxRuntime {
         }
     }
 
+    public static <T> T executeWithOptions(Arena arena, MethodHandles.Lookup l, OnnxFunction<T> codeLambda, SessionOptions options) {
+        var q = Op.ofQuotable(codeLambda).orElseThrow();
+
+        SessionWithReturnType cached = SESSION_CACHE.computeWithOptionsIfAbsent(codeLambda.getClass(), l, q, options);
+
+        List<Tensor> arguments = q.capturedValues().sequencedValues().stream()
+                .mapMulti(OnnxRuntime::expandArg)
+                .toList();
+        List<Tensor> ret = cached.session().run(arena, arguments);
+
+        var lambdaOp = ((JavaOp.LambdaOp)q.op());
+        TypeElement type = lambdaOp.invokableType().returnType();
+        if (type instanceof ArrayType) {
+            return (T) ret.toArray(Tensor[]::new);
+        }
+        ClassType retType = ((ClassType) type).rawType();
+        if (retType.equals(TENSOR_RAW_TYPE)) {
+            return (T) ret.getFirst();
+        } else if (retType.equals(LIST_RAW_TYPE)) {
+            return (T) ret;
+        } else if (getRecordClass(l, retType) instanceof Class cls) {
+            try {
+                return (T) cls.getConstructors()[0].newInstance(unflat(ret, (TupleType) cached.returnType()));
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        } else {
+            throw new UnsupportedOperationException("Unsupported return type: " + q.op().resultType());
+        }
+    }
+
     static Object[] unflat(List<Tensor> values, TupleType returnTupleType) {
         var returnTypes = returnTupleType.componentTypes();
         Object[] ret = new Object[returnTypes.size()];
@@ -261,11 +313,9 @@ public final class OnnxRuntime {
         //  const OrtApi* ortPtr = OrtGetApiBase()->GetApi((uint32_t)apiVersion);
         var apiBase = OrtApiBase.reinterpret(OrtGetApiBase(), arena, null);
         runtimeAddress = OrtApi.reinterpret(OrtApiBase.GetApi(apiBase, ORT_API_VERSION()), arena, null);
-        envAddress = retAddr(OrtApi.CreateEnv(runtimeAddress, ORT_LOGGING_LEVEL_ERROR(), arena.allocateFrom(LOG_ID), ret));
+        envAddress = retAddr(OrtApi.CreateEnv(runtimeAddress, ORT_LOGGING_LEVEL_VERBOSE(), arena.allocateFrom(LOG_ID), ret));
         defaultAllocatorAddress = retAddr(OrtApi.GetAllocatorWithDefaultOptions(runtimeAddress, ret)).reinterpret(arena, null);
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            OrtApi.ReleaseEnv(runtimeAddress, envAddress);
-        }));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> OrtApi.ReleaseEnv(runtimeAddress, envAddress)));
     }
 
     public List<Tensor> runOp(Arena arena, String opName, List<Tensor> inputValues, int numOutputs, Map<String, Object> attributes) {
@@ -348,7 +398,7 @@ public final class OnnxRuntime {
                 outputNames.setAtIndex(C_POINTER, i, arena.allocateFrom(getOutputName(i)));
                 outputs.setAtIndex(C_POINTER, i, MemorySegment.NULL);
             }
-            checkStatus(OrtApi.Run(runtimeAddress, sessionAddress, runOptions, inputNames, inputs, (long)inputLen, outputNames, (long)outputLen, outputs));
+            checkStatus(OrtApi.Run(runtimeAddress, sessionAddress, runOptions, inputNames, inputs, inputLen, outputNames, outputLen, outputs));
             var retArr = new Tensor[outputLen];
             for (int i = 0; i < outputLen; i++) {
                 var tensorAddr = outputs.getAtIndex(C_POINTER, i)
@@ -361,12 +411,12 @@ public final class OnnxRuntime {
     }
 
     public MemorySegment createTensor(Arena arena, MemorySegment flatData, Tensor.ElementType elementType, long[] shape) {
-        var allocatorInfo = retAddr(OrtApi.AllocatorGetInfo(runtimeAddress, defaultAllocatorAddress, ret));
+        var allocatorInfo = retAddr(OrtApi.GetAllocatorWithDefaultOptions(runtimeAddress, ret));
         return retAddr(OrtApi.CreateTensorWithDataAsOrtValue(
                 runtimeAddress,
                 allocatorInfo,
                 flatData, flatData.byteSize(),
-                shape.length == 0 ? MemorySegment.NULL : autoShape(arena, shape, 8l * flatData.byteSize() / elementType.bitSize()), (long)shape.length,
+                shape.length == 0 ? MemorySegment.NULL : autoShape(arena, shape, 8L * flatData.byteSize() / elementType.bitSize()), shape.length,
                 elementType.id,
                 ret)).reinterpret(arena, value -> OrtApi.ReleaseValue(runtimeAddress, value));
     }
@@ -428,7 +478,7 @@ public final class OnnxRuntime {
 
     public final class SessionOptions {
 
-        private final MemorySegment sessionOptionsAddress;
+		private final MemorySegment sessionOptionsAddress;
 
         public SessionOptions(MemorySegment sessionOptionsAddress) {
             this.sessionOptionsAddress = sessionOptionsAddress;
@@ -438,6 +488,10 @@ public final class OnnxRuntime {
         public void setInterOpNumThreads(int numThreads) {
             checkStatus(OrtApi.SetInterOpNumThreads(runtimeAddress, sessionOptionsAddress, numThreads));
         }
+
+		public MemorySegment getSessionOptionsAddress() {
+			return sessionOptionsAddress;
+		}
     }
 
     private MemorySegment retAddr(MemorySegment res) {
