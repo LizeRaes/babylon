@@ -37,20 +37,17 @@ public class FERCoreMLDemo {
 	public static final String EMPTY_STRING = "";
 	public static final String RED_ERROR_SPAN = "<span style='color:red'>Error!</span>";
 	private final List<URL> selectedUrls = new ArrayList<>();
-	private final boolean useCondensedModel;
 	private JFrame frame;
 	private JLabel[] imageLabels;
 	private JLabel[] resultLabels;
 	private final FERInference inference;
 
-	private FERCoreMLDemo(boolean useCondensedModel) {
+	private FERCoreMLDemo() {
 		this.inference = new FERInference();
-		this.useCondensedModel = useCondensedModel;
 	}
 
 	public static void main(String[] args) throws IOException, URISyntaxException {
-		boolean useArgModel = args.length > 0 && Boolean.parseBoolean(args[0]);
-		new FERCoreMLDemo(useArgModel).buildGUI();
+		new FERCoreMLDemo().buildGUI();
 	}
 
 	private void buildGUI() throws IOException, URISyntaxException {
