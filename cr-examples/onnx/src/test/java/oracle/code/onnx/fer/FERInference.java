@@ -11,9 +11,7 @@ import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.ValueLayout;
 import java.net.URL;
-import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.imageio.ImageIO;
@@ -51,17 +49,11 @@ public class FERInference {
 		return out;
 	}
 
-	public float[] analyzeImage(URL imageUrl) {
-		try (var inferenceArena = Arena.ofConfined()) {
-			var sessionOptions = runtime.createSessionOptions(inferenceArena);
+	public float[] analyzeImage(Arena arena, OnnxProvider provider, URL imageUrl) {
+		try {
+			var sessionOptions = runtime.createSessionOptions(arena);
 
-			Map<String, String> options = Map.of("ModelFormat", "MLProgram",
-					"MLComputeUnits", "CPUAndGPU", "EnableOnSubgraphs", "1",
-					"AllowLowPrecisionAccumulationOnGPU", "1",
-					"ModelCacheDirectory", Path.of(imageUrl.toURI()).getParent().toString());
-
-			OnnxProvider provider = new OnnxProvider("CoreML", options);
-			runtime.appendExecutionProvider(inferenceArena, sessionOptions, provider);
+			runtime.appendExecutionProvider(arena, sessionOptions, provider);
 
 			URL modelUrl = FERInference.class.getResource(MODEL_PATH);
 			if (modelUrl == null) {
@@ -70,14 +62,16 @@ public class FERInference {
 
 			byte[] modelBytes = modelUrl.openStream().readAllBytes();
 
-			var inferenceSession = runtime.createSession(inferenceArena, modelBytes, sessionOptions);
+			var inferenceSession = runtime.createSession(arena, modelBytes, sessionOptions);
 
-			float[] imageData = loadImageAsFloatArray(imageUrl);
+			float[] imageData = null;
+
+			imageData = loadImageAsFloatArray(imageUrl);
 
 			long[] shape = {1, 1, IMAGE_SIZE, IMAGE_SIZE};
-			var inputTensor = Tensor.ofShape(inferenceArena, shape, imageData);
+			var inputTensor = Tensor.ofShape(arena, shape, imageData);
 
-			List<Tensor> outputs = inferenceSession.run(inferenceArena, List.of(inputTensor));
+			List<Tensor> outputs = inferenceSession.run(arena, List.of(inputTensor));
 
 			float[] rawScores = outputs.getFirst()
 					.data().toArray(ValueLayout.JAVA_FLOAT);
