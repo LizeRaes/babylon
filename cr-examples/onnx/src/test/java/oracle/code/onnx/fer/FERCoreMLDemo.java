@@ -82,9 +82,6 @@ public class FERCoreMLDemo {
 		}
 
 		JButton analyzeBtn = new JButton("Analyze");
-		JProgressBar progressBar = new JProgressBar(0, MAX_SELECTIONS);
-		progressBar.setStringPainted(true);
-		progressBar.setVisible(false);
 
 		analyzeBtn.addActionListener(_ -> {
 			if (analyzeBtn.getText().equals("Analyze")) {
@@ -92,15 +89,14 @@ public class FERCoreMLDemo {
 					JOptionPane.showMessageDialog(frame, "Please select at least one meme!");
 					return;
 				}
-				analyzeSelection(progressBar, analyzeBtn);
+				analyzeSelection(analyzeBtn);
 			} else if (analyzeBtn.getText().equals("Restart")) {
 				restartAnalysis(analyzeBtn);
 			}
 		});
 
-		JPanel southPanel = new JPanel(new BorderLayout());
-		southPanel.add(analyzeBtn, BorderLayout.CENTER);
-		southPanel.add(progressBar, BorderLayout.SOUTH);
+		JPanel southPanel = new JPanel();
+		southPanel.add(analyzeBtn);
 
 		frame.add(thumbPanel, BorderLayout.NORTH);
 		frame.add(bigPanel, BorderLayout.CENTER);
@@ -116,10 +112,11 @@ public class FERCoreMLDemo {
 	private JLabel retrieveLabel(Image scaled, URL url, BufferedImage img) {
 		JLabel thumb = new JLabel(new ImageIcon(scaled));
 		thumb.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+		thumb.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		thumb.addMouseListener(new MouseAdapter() {
 			@Override
-			public void mouseClicked(MouseEvent e) {
-				if (selectedUrls.size() < MAX_SELECTIONS) {
+			public void mousePressed(MouseEvent e) {
+				if (selectedUrls.size() < MAX_SELECTIONS && !selectedUrls.contains(url)) {
 					selectedUrls.add(url);
 					int idx = selectedUrls.size() - 1;
 					imageLabels[idx].setIcon(new ImageIcon(
@@ -161,10 +158,7 @@ public class FERCoreMLDemo {
 		return urls;
 	}
 
-	private void analyzeSelection(JProgressBar progressBar, JButton analyzeBtn) {
-		progressBar.setValue(0);
-		progressBar.setMaximum(selectedUrls.size());
-		progressBar.setVisible(true);
+	private void analyzeSelection(JButton analyzeBtn) {
 		analyzeBtn.setEnabled(false);
 
 		Map<String, String> options = Map.of("ModelFormat", "MLProgram",
@@ -199,8 +193,6 @@ public class FERCoreMLDemo {
 					logger.log(Level.SEVERE, "Error occurred when evaluating images", ex);
 					resultLabels[i].setText(result.formatted(result.formatted(RED_ERROR_SPAN)));
 				}
-				progressBar.setValue(i + 1);
-				progressBar.setString("Processed " + (i + 1) + "/" + selectedUrls.size());
 			}
 		} catch (Exception initEx) {
 			logger.log(Level.SEVERE, "Failed to initialize inference resources", initEx);
@@ -209,7 +201,6 @@ public class FERCoreMLDemo {
 			logger.info("Total inference time: %d ms for %d images".formatted(totalInferenceTime, selectedUrls.size()));
 			analyzeBtn.setEnabled(true);
 			analyzeBtn.setText("Restart");
-			progressBar.setString("Analysis complete!");
 			logger.info("=== FER analysis complete ===");
 		}
 	}
@@ -224,9 +215,6 @@ public class FERCoreMLDemo {
 		}
 
 		analyzeBtn.setText("Analyze");
-
-		JProgressBar progressBar = (JProgressBar) analyzeBtn.getParent().getComponent(1);
-		progressBar.setVisible(false);
 
 		frame.repaint();
 	}
