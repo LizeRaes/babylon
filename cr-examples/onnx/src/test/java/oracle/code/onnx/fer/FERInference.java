@@ -2,6 +2,7 @@ package oracle.code.onnx.fer;
 
 import oracle.code.onnx.coreml.OnnxProvider;
 import oracle.code.onnx.coreml.OnnxRuntime;
+import oracle.code.onnx.coreml.OnnxRuntime.Session;
 import oracle.code.onnx.coreml.Tensor;
 
 import java.awt.Graphics2D;
@@ -33,6 +34,26 @@ public class FERInference {
 		runtime = OnnxRuntime.getInstance();
 	}
 
+	public Session prepareSession(Arena arena, OnnxProvider provider) {
+		var sessionOptions = runtime.createSessionOptions(arena);
+
+		runtime.appendExecutionProvider(arena, sessionOptions, provider);
+
+		URL modelUrl = FERInference.class.getResource(MODEL_PATH);
+		if (modelUrl == null) {
+			throw new RuntimeException("Model not found: " + MODEL_PATH);
+		}
+
+		byte[] modelBytes;
+		try {
+			modelBytes = modelUrl.openStream().readAllBytes();
+		} catch (IOException e) {
+			throw new RuntimeException("Failed to load model", e);
+		}
+
+		return runtime.createSession(arena, modelBytes, sessionOptions);
+	}
+
 	private static float[] softmax(float[] scores) {
 		float max = Float.NEGATIVE_INFINITY;
 		for (float s : scores) if (s > max) max = s;
@@ -49,24 +70,9 @@ public class FERInference {
 		return out;
 	}
 
-	public float[] analyzeImage(Arena arena, OnnxProvider provider, URL imageUrl) {
+	public float[] analyzeImage(Arena arena, Session inferenceSession, URL imageUrl) {
 		try {
-			var sessionOptions = runtime.createSessionOptions(arena);
-
-			runtime.appendExecutionProvider(arena, sessionOptions, provider);
-
-			URL modelUrl = FERInference.class.getResource(MODEL_PATH);
-			if (modelUrl == null) {
-				throw new RuntimeException("Model not found: " + MODEL_PATH);
-			}
-
-			byte[] modelBytes = modelUrl.openStream().readAllBytes();
-
-			var inferenceSession = runtime.createSession(arena, modelBytes, sessionOptions);
-
-			float[] imageData = null;
-
-			imageData = loadImageAsFloatArray(imageUrl);
+			float[] imageData = loadImageAsFloatArray(imageUrl);
 
 			long[] shape = {1, 1, IMAGE_SIZE, IMAGE_SIZE};
 			var inputTensor = Tensor.ofShape(arena, shape, imageData);
