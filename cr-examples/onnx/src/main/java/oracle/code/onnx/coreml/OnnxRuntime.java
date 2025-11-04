@@ -57,7 +57,7 @@ public final class OnnxRuntime {
 		//  const OrtApi* ortPtr = OrtGetApiBase()->GetApi((uint32_t)apiVersion);
 		var apiBase = OrtApiBase.reinterpret(OrtGetApiBase(), arena, null);
 		runtimeAddress = OrtApi.reinterpret(OrtApiBase.GetApi.invoke(OrtApiBase.GetApi(apiBase), ORT_API_VERSION()), arena, null);
-		envAddress = retAddr(OrtApi.CreateEnv.invoke(OrtApi.CreateEnv(runtimeAddress), ORT_LOGGING_LEVEL_VERBOSE(), arena.allocateFrom(LOG_ID), ret));
+		envAddress = retAddr(OrtApi.CreateEnv.invoke(OrtApi.CreateEnv(runtimeAddress), ORT_LOGGING_LEVEL_INFO(), arena.allocateFrom(LOG_ID), ret));
 		defaultAllocatorAddress = retAddr(OrtApi.GetAllocatorWithDefaultOptions.invoke(OrtApi.GetAllocatorWithDefaultOptions(runtimeAddress), ret)).reinterpret(arena, null);
 		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
 			OrtApi.ReleaseEnv.invoke(OrtApi.ReleaseEnv(runtimeAddress), envAddress);

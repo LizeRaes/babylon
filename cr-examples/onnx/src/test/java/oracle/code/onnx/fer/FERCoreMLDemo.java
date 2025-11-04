@@ -7,18 +7,23 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.lang.foreign.Arena;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.IntStream;
 
+import oracle.code.onnx.coreml.OnnxProvider;
+
 public class FERCoreMLDemo {
 
+	static final int IMAGE_SIZE = 64;
 	static final String[] EMOTIONS = {
 			"neutral", "happiness", "surprise", "sadness",
 			"anger", "disgust", "fear", "contempt"
@@ -29,6 +34,8 @@ public class FERCoreMLDemo {
 	private static final int MAX_SELECTIONS = 6;
 	private static final int MAX_THUMBNAILS = 12;
 	private static final String BASE_PATH = "/oracle/code/onnx/fer/";
+	public static final String EMPTY_STRING = "";
+	public static final String RED_ERROR_SPAN = "<span style='color:red'>Error!</span>";
 	private final List<URL> selectedUrls = new ArrayList<>();
 	private JFrame frame;
 	private JLabel[] imageLabels;
@@ -56,7 +63,7 @@ public class FERCoreMLDemo {
 			imageLabels[i] = new JLabel("Empty", SwingConstants.CENTER);
 			imageLabels[i].setPreferredSize(new Dimension(300, 300));
 			imageLabels[i].setBorder(BorderFactory.createLineBorder(Color.LIGHT_GRAY));
-			resultLabels[i] = new JLabel("", SwingConstants.CENTER);
+			resultLabels[i] = new JLabel(EMPTY_STRING, SwingConstants.CENTER);
 			slot.add(imageLabels[i], BorderLayout.CENTER);
 			slot.add(resultLabels[i], BorderLayout.SOUTH);
 			bigPanel.add(slot);
@@ -117,8 +124,8 @@ public class FERCoreMLDemo {
 					int idx = selectedUrls.size() - 1;
 					imageLabels[idx].setIcon(new ImageIcon(
 							img.getScaledInstance(300, 300, Image.SCALE_SMOOTH)));
-					imageLabels[idx].setText("");
-					resultLabels[idx].setText("");
+					imageLabels[idx].setText(EMPTY_STRING);
+					resultLabels[idx].setText(EMPTY_STRING);
 					logger.info("Thumbnail selected: %s".formatted(url));
 				}
 			}
@@ -160,31 +167,40 @@ public class FERCoreMLDemo {
 		progressBar.setVisible(true);
 		analyzeBtn.setEnabled(false);
 
+		Map<String, String> options = Map.of("ModelFormat", "MLProgram",
+				"MLComputeUnits", "CPUAndGPU", "EnableOnSubgraphs", "1",
+				"AllowLowPrecisionAccumulationOnGPU", "1",
+				"ModelCacheDirectory", FERCoreMLDemo.class.getResource(BASE_PATH).getPath());
+		OnnxProvider provider = new OnnxProvider("CoreML", options);
+
 		long startTime = System.nanoTime();
 
-		for (int i = 0; i < selectedUrls.size(); i++) {
-			URL url = selectedUrls.get(i);
-
-			try {
-				float[] probs = inference.analyzeImage(url);
-				String top3 = formatTopK(probs);
-				resultLabels[i].setText("<html>" + top3 + "</html>");
-			} catch (Exception ex) {
-				logger.log(Level.SEVERE, "Error occurred when evaluating images", ex);
-				resultLabels[i].setText("<html><span style='color:red'>Error!</span></html>");
+		try (var arena = Arena.ofConfined()) {
+			for (int i = 0; i < selectedUrls.size(); i++) {
+				URL url = selectedUrls.get(i);
+				String result = "<html>%s</html>";
+				try {
+					float[] probs = inference.analyzeImage(arena, provider, url);
+					String top3 = formatTopK(probs);
+					resultLabels[i].setText(result.formatted(top3 ));
+					frame.repaint();
+				} catch (Exception ex) {
+					logger.log(Level.SEVERE, "Error occurred when evaluating images", ex);
+					resultLabels[i].setText(result.formatted(result.formatted(RED_ERROR_SPAN)));
+				}
+				progressBar.setValue(i + 1);
+				progressBar.setString("Processed " + (i + 1) + "/" + selectedUrls.size());
 			}
-
-			progressBar.setValue(i + 1);
-			progressBar.setString("Processed " + (i + 1) + "/" + selectedUrls.size());
-			frame.repaint();
+		} catch (Exception initEx) {
+			logger.log(Level.SEVERE, "Failed to initialize inference resources", initEx);
+		} finally {
+			long endTime = System.nanoTime();
+			logger.info("Total time spent in evaluation %s ms".formatted((endTime - startTime) / 1000000));
+			analyzeBtn.setEnabled(true);
+			analyzeBtn.setText("Restart");
+			progressBar.setString("Analysis complete!");
+			logger.info("=== FER analysis complete ===");
 		}
-
-		long endTime = System.nanoTime();
-		logger.info("Total time spent in evaluation %s ms".formatted((endTime - startTime)/1000000));
-		analyzeBtn.setEnabled(true);
-		analyzeBtn.setText("Restart");
-		progressBar.setString("Analysis complete!");
-		logger.info("=== FER analysis complete ===");
 	}
 
 	private void restartAnalysis(JButton analyzeBtn) {
@@ -193,7 +209,7 @@ public class FERCoreMLDemo {
 		for (int i = 0; i < MAX_SELECTIONS; i++) {
 			imageLabels[i].setIcon(null);
 			imageLabels[i].setText("Empty");
-			resultLabels[i].setText("");
+			resultLabels[i].setText(EMPTY_STRING);
 		}
 
 		analyzeBtn.setText("Analyze");
