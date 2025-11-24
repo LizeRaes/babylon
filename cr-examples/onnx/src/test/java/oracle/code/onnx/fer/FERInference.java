@@ -1,85 +1,117 @@
-/*
- * Copyright (c) 2025, Oracle and/or its affiliates. All rights reserved.
- * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
- *
- * This code is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 only, as
- * published by the Free Software Foundation.
- *
- * This code is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- * version 2 for more details (a copy is included in the LICENSE file that
- * accompanied this code).
- *
- * You should have received a copy of the GNU General Public License version
- * 2 along with this work; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
- * Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
- * or visit www.oracle.com if you need additional information or have any
- * questions.
- */
-
 package oracle.code.onnx.fer;
 
-import oracle.code.onnx.OnnxProvider;
-import oracle.code.onnx.OnnxRuntime;
+import oracle.code.onnx.coreml.OnnxProvider;
+import oracle.code.onnx.coreml.OnnxRuntime;
+import oracle.code.onnx.coreml.OnnxRuntime.Session;
+import oracle.code.onnx.coreml.Tensor;
 
-import javax.imageio.ImageIO;
-import java.awt.*;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.lang.foreign.Arena;
+import java.lang.foreign.ValueLayout;
 import java.net.URL;
-import java.util.Objects;
-
-import static oracle.code.onnx.fer.FERCoreMLDemo.IMAGE_SIZE;
+import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import javax.imageio.ImageIO;
 
 public class FERInference {
 
+	private static final Logger logger = Logger.getLogger(FERInference.class.getName());
+	private static final String MODEL_PATH = "/oracle/code/onnx/fer/emotion-ferplus-8.onnx";
+	private static final int IMAGE_SIZE = 64;
 
-    private final OnnxRuntime runtime;
+	private static final String[] EMOTIONS = {
+			"neutral", "happiness", "surprise", "sadness",
+			"anger", "disgust", "fear", "contempt"
+	};
 
-    public FERInference() {
-        runtime = OnnxRuntime.getInstance();
-    }
+	private final OnnxRuntime runtime;
 
-    public float[] analyzeImage(Arena arena, OnnxRuntime.SessionOptions sessionOptions, URL url, boolean isCondensed) throws Exception {
-        float[] imageData = transformToFloatArray(url);
-        FERModel ferModel = new FERModel(arena);
-        float[] rawScores = ferModel.classify(imageData, sessionOptions, isCondensed);
-        return rawScores;
-    }
+	public FERInference() {
+		runtime = OnnxRuntime.getInstance();
+	}
 
-    public OnnxRuntime.SessionOptions prepareSessionOptions(Arena arena, OnnxProvider provider) {
-        var sessionOptions = runtime.createSessionOptions(arena);
-        if (Objects.nonNull(provider)) {
-            runtime.appendExecutionProvider(arena, sessionOptions, provider);
-        }
-        return sessionOptions;
-    }
+	public Session prepareSession(Arena arena, OnnxProvider provider) {
+		var sessionOptions = runtime.createSessionOptions(arena);
 
-    private float[] transformToFloatArray(URL imgUrl) throws IOException {
-        BufferedImage src = ImageIO.read(imgUrl);
-        if (src == null) {
-            throw new IOException("Unsupported or corrupt image: " + imgUrl);
-        }
+		runtime.appendExecutionProvider(arena, sessionOptions, provider);
 
-        BufferedImage graySrc = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_BYTE_GRAY);
-        Graphics2D g0 = graySrc.createGraphics();
-        g0.drawImage(src, 0, 0, null);
-        g0.dispose();
+		URL modelUrl = FERInference.class.getResource(MODEL_PATH);
+		if (modelUrl == null) {
+			throw new RuntimeException("Model not found: " + MODEL_PATH);
+		}
 
-        BufferedImage gray = new BufferedImage(IMAGE_SIZE, IMAGE_SIZE, BufferedImage.TYPE_BYTE_GRAY);
-        Graphics2D g = gray.createGraphics();
-        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-        g.drawImage(graySrc, 0, 0, IMAGE_SIZE, IMAGE_SIZE, null);
-        g.dispose();
+		byte[] modelBytes;
+		try {
+			modelBytes = modelUrl.openStream().readAllBytes();
+		} catch (IOException e) {
+			throw new RuntimeException("Failed to load model", e);
+		}
 
-        float[] data = new float[IMAGE_SIZE * IMAGE_SIZE];
-        gray.getData().getSamples(0, 0, IMAGE_SIZE, IMAGE_SIZE, 0, data);
+		return runtime.createSession(arena, modelBytes, sessionOptions);
+	}
 
-        return data;
-    }
+	private static float[] softmax(float[] scores) {
+		float max = Float.NEGATIVE_INFINITY;
+		for (float s : scores) if (s > max) max = s;
+		double sum = 0.0;
+		double[] exps = new double[scores.length];
+		for (int i = 0; i < scores.length; i++) {
+			exps[i] = Math.exp(scores[i] - max);
+			sum += exps[i];
+		}
+		float[] out = new float[scores.length];
+		for (int i = 0; i < scores.length; i++) {
+			out[i] = (float) (exps[i] / sum);
+		}
+		return out;
+	}
+
+	public float[] analyzeImage(Arena arena, Session inferenceSession, URL imageUrl) {
+		try {
+			float[] imageData = loadImageAsFloatArray(imageUrl);
+
+			long[] shape = {1, 1, IMAGE_SIZE, IMAGE_SIZE};
+			var inputTensor = Tensor.ofShape(arena, shape, imageData);
+
+			List<Tensor> outputs = inferenceSession.run(arena, List.of(inputTensor));
+
+			float[] rawScores = outputs.getFirst()
+					.data().toArray(ValueLayout.JAVA_FLOAT);
+			// model does not output softmax, so we need to apply it ourselves
+			float[] probs = softmax(rawScores);
+
+			return probs;
+		} catch (Exception e) {
+			String errorMessage = "FERInference error for %s".formatted(imageUrl);
+			logger.log(Level.SEVERE, errorMessage, e);
+			throw new RuntimeException(errorMessage);
+		}
+	}
+
+	private float[] loadImageAsFloatArray(URL imgUrl) throws IOException {
+		BufferedImage src = ImageIO.read(imgUrl);
+		if (src == null) {
+			throw new IOException("Unsupported or corrupt image: " + imgUrl);
+		}
+
+		BufferedImage graySrc = new BufferedImage(src.getWidth(), src.getHeight(), BufferedImage.TYPE_BYTE_GRAY);
+		Graphics2D g0 = graySrc.createGraphics();
+		g0.drawImage(src, 0, 0, null);
+		g0.dispose();
+
+		BufferedImage gray = new BufferedImage(IMAGE_SIZE, IMAGE_SIZE, BufferedImage.TYPE_BYTE_GRAY);
+		Graphics2D g = gray.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+		g.drawImage(graySrc, 0, 0, IMAGE_SIZE, IMAGE_SIZE, null);
+		g.dispose();
+
+		float[] data = new float[IMAGE_SIZE * IMAGE_SIZE];
+		gray.getData().getSamples(0, 0, IMAGE_SIZE, IMAGE_SIZE, 0, data);
+
+		return data;
+	}
 }

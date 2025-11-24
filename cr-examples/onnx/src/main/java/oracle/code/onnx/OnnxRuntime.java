@@ -114,7 +114,7 @@ public final class OnnxRuntime {
     public static List<Object> getInitValues(MethodHandles.Lookup lookup, SequencedCollection<FieldRef> initializers, SequencedCollection<Object> possibleReceivers) {
         return initializers.stream().map(i -> {
             try {
-                Field initializerField = i.resolveToField(lookup);
+                Field initializerField = i.resolveToMember(lookup);
                 VarHandle handle = lookup.unreflectVarHandle(initializerField);
                 if (initializerField.accessFlags().contains(AccessFlag.STATIC)) {
                     return handle.get();
@@ -438,8 +438,7 @@ public final class OnnxRuntime {
     }
 
     @FunctionalInterface
-    @Reflect
-    public interface OnnxFunction<T> extends Supplier<T> {
+    public interface OnnxFunction<T> extends Supplier<T>, Quotable {
     }
 
     record SessionWithReturnType(Session session, TypeElement returnType) {

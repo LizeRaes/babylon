@@ -157,12 +157,12 @@ public sealed class ExplicitOnnxOps permits OnnxOps {
             super(SCHEMA, def);
         }
 
-        GroupQueryAttention(GroupQueryAttention that, CodeContext cc) {
+        GroupQueryAttention(GroupQueryAttention that, CopyContext cc) {
             super(that, cc);
         }
 
         @Override
-        public GroupQueryAttention transform(CodeContext cc, CodeTransformer ot) {
+        public GroupQueryAttention transform(CopyContext cc, OpTransformer ot) {
             return new GroupQueryAttention(this, cc);
         }
 
@@ -355,12 +355,12 @@ public sealed class ExplicitOnnxOps permits OnnxOps {
             super(SCHEMA, def);
         }
 
-        MatMulNBits(MatMulNBits that, CodeContext cc) {
+        MatMulNBits(MatMulNBits that, CopyContext cc) {
             super(that, cc);
         }
 
         @Override
-        public MatMulNBits transform(CodeContext cc, CodeTransformer ot) {
+        public MatMulNBits transform(CopyContext cc, OpTransformer ot) {
             return new MatMulNBits(this, cc);
         }
 
@@ -524,12 +524,12 @@ public sealed class ExplicitOnnxOps permits OnnxOps {
             super(SCHEMA, def);
         }
 
-        SkipSimplifiedLayerNormalization(SkipSimplifiedLayerNormalization that, CodeContext cc) {
+        SkipSimplifiedLayerNormalization(SkipSimplifiedLayerNormalization that, CopyContext cc) {
             super(that, cc);
         }
 
         @Override
-        public SkipSimplifiedLayerNormalization transform(CodeContext cc, CodeTransformer ot) {
+        public SkipSimplifiedLayerNormalization transform(CopyContext cc, OpTransformer ot) {
             return new SkipSimplifiedLayerNormalization(this, cc);
         }
 
@@ -660,7 +660,7 @@ public sealed class ExplicitOnnxOps permits OnnxOps {
             this.elseBody = def.bodyDefinitions().get(1).build(this);
         }
 
-        If(If that, CodeContext cc, CodeTransformer ot) {
+        If(If that, CopyContext cc, OpTransformer ot) {
             super(that, cc);
 
             this.thenBody = that.thenBody.transform(cc, ot).build(this);
@@ -668,7 +668,7 @@ public sealed class ExplicitOnnxOps permits OnnxOps {
         }
 
         @Override
-        public If transform(CodeContext cc, CodeTransformer ot) {
+        public If transform(CopyContext cc, OpTransformer ot) {
             return new If(this, cc, ot);
         }
 
@@ -802,14 +802,14 @@ public sealed class ExplicitOnnxOps permits OnnxOps {
             this.body = def.bodyDefinitions().get(0).build(this);
         }
 
-        Loop(ExplicitOnnxOps.Loop that, CodeContext cc, CodeTransformer ot) {
+        Loop(ExplicitOnnxOps.Loop that, CopyContext cc, OpTransformer ot) {
             super(that, cc);
 
             this.body = that.body.transform(cc, ot).build(this);
         }
 
         @Override
-        public ExplicitOnnxOps.Loop transform(CodeContext cc, CodeTransformer ot) {
+        public ExplicitOnnxOps.Loop transform(CopyContext cc, OpTransformer ot) {
             return new ExplicitOnnxOps.Loop(this, cc, ot);
         }
 

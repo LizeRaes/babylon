@@ -58,7 +58,7 @@ final class JavaTemplate {
         import java.lang.foreign.MemorySegment;
         import java.nio.channels.FileChannel;
         import java.util.List;
-        import jdk.incubator.code.Reflect;
+        import jdk.incubator.code.CodeReflection;
         import oracle.code.onnx.Tensor;
 
         import static java.util.Optional.*;
@@ -82,7 +82,7 @@ final class JavaTemplate {
             }
 
         %s
-            @Reflect
+            @CodeReflection
             public Object mainGraph(
         %s) {%s
             }

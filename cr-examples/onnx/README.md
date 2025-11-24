@@ -8,7 +8,30 @@ JAVA_HOME=<path to the Babylon JDK home>
 mvn process-test-classes exec:java -Dexec.mainClass=oracle.code.onnx.mnist.MNISTDemo
 ```
 
-### ONNX Runtime with CoreML running facial emotion recognition from Java source.
+
+## ONNX Runtime with CoreML running facial emotion recognition from Java source
+
+### Running the demo FFM only
+
+For demo purposes, we isolated an FFM only `OnnxRuntime` in `oracle.code.onnx.coreml`.
+
+Babylon JDK is based on current OpenJDK mainline.
+This means that the FFM compatible parts of the `onnx` project can be ran with JDK 25 or OpenJDK 26 Early Access Builds.
+You can try that by pointing your $JAVA_HOME to JDK 25 then run `run-jdk.sh` script:
+
+```shell
+JAVA_HOME=<path to JDK 25>
+./run-jdk.sh
+```
+
+Running the FER demo:
+
+```
+JAVA_HOME=<path to the Babylon JDK home>
+mvn process-test-classes exec:java -Dexec.mainClass=oracle.code.onnx.fer.FERCoreMLDemo
+```
+
+#### Running the CodeReflection Demo
 
 Download the `.data` file from [emotion-ferplus-8.onnx.data](https://github.com/ammbra/fer-model-weights/raw/refs/heads/main/emotion-ferplus-8.onnx.data) and place it under `cr-examples/onnx/src/test/resources/oracle/code/onnx/fer` folder.
 

@@ -27,7 +27,7 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandles;
 import java.util.List;
-import jdk.incubator.code.Reflect;
+import jdk.incubator.code.CodeReflection;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -97,7 +97,7 @@ public class WalkTheMazeTest {
         wall = Tensor.ofScalar(arena, '#');
     }
 
-    @Reflect
+    @CodeReflection
     public Tensor<Long> turnLeft(Tensor<Long> direction) {
         return If(Equal(direction, directionEast),
                 () -> Identity(directionNorth),
@@ -108,18 +108,18 @@ public class WalkTheMazeTest {
                             () -> Identity(directionEast))));
     }
 
-    @Reflect
+    @CodeReflection
     public Tensor<Long> turnRight(Tensor<Long> direction) {
         return Loop(three, _true, direction, (i, cond, d)
                 -> new LoopResult<>(cond, turnLeft(d)));
     }
 
-    @Reflect
+    @CodeReflection
     public Tensor<Boolean> isWallAt(Tensor<Long> pos) {
         return Equal(CastLike(Slice(maze, pos, Add(pos, oneOne), empty(), empty()), wall, empty(), empty()), wall);
     }
 
-    @Reflect
+    @CodeReflection
     public Tensor<Long> step(Tensor<Long> myPos, Tensor<Long> myDirection) {
         return  If(Equal(myDirection, directionEast),
                 () -> Add(myPos, stepEast),
@@ -130,12 +130,12 @@ public class WalkTheMazeTest {
                             () -> Add(myPos, stepSouth))));
     }
 
-    @Reflect
+    @CodeReflection
     public Tensor<Boolean> atHome(Tensor<Long> pos) {
         return ReduceMin(Equal(pos, homePos), empty(), empty(), empty());
     }
 
-    @Reflect
+    @CodeReflection
     public Tensor<Long> turnLeftWhileWall(Tensor<Long> pos, Tensor<Long> direction) {
         var initialCond = Reshape(isWallAt(step(pos, direction)), scalarShape, empty());
         return Loop(limit, initialCond, direction, (_, _, dir) -> {
@@ -144,14 +144,14 @@ public class WalkTheMazeTest {
             });
     }
 
-    @Reflect
+    @CodeReflection
     public Tensor<Byte> appendToPath(Tensor<Byte> path, Tensor<Long> direction) {
         return Concat(List.of(path, Cast(direction, empty(), 2, empty())), 0);
     }
 
     public record LoopData(Tensor<Long> pos, Tensor<Long> direction, Tensor<Byte> path) {}
 
-    @Reflect
+    @CodeReflection
     public Tensor<Byte> walkAroundTheMaze() {
         var initData = new LoopData(homePos, directionEast, Cast(directionEast, empty(), 2, empty()));
         var outData = Loop(limit, _true, initData, (_, _, loopData) -> {
